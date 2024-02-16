@@ -24,23 +24,27 @@ var ftpList = '';
 
 // --> Bind delle variabili interne rispetto al config properties
 
-let DB_USER = process.env.DB_USER;
+let DB_USER = process.env.DB_USER || "";
 console.log("DB_USER:"+DB_USER);
 
-let DB_PASSWORD = process.env.DB_PASSWORD;
+let DB_PASSWORD = process.env.DB_PASSWORD || "";
 console.log("DB_PASSWORD:"+DB_PASSWORD);
 
-let DB_CONNECTION_STRING = process.env.DB_CONNECTION_STRING;
+let DB_CONNECTION_STRING = process.env.DB_CONNECTION_STRING || "";
 console.log("DB_CONNECTION_STRING:"+DB_CONNECTION_STRING);
 
-instanceName = process.env.INSTANCE_NAME;
+instanceName = process.env.INSTANCE_NAME || "";
 console.log("instanceName:"+instanceName);
 
-mountPath = process.env.PVC;
+mountPath = process.env.PVC || "";
 console.log("mountPath:"+mountPath);
 
-ftpList = process.env.FTP_LIST;
+ftpList = process.env.FTP_LIST || "";
 console.log("ftpList:"+ftpList);
+
+if (DB_USER === "" || DB_PASSWORD === "" || DB_CONNECTION_STRING === "" || instanceName === "" || mountPath === "" || ftpList === ""){
+console.log("Attenzione, verificare le variabili d'ambiente!");
+}
 
 // <--- Bind delle variabili interne rispetto al config properties
 
@@ -508,13 +512,14 @@ function App() {
   });
   console.log(wardList);
 
-  var appStart = procesMultipleCandidates(objFtpList.ftp)
+  //var appStart = procesMultipleCandidates(objFtpList.ftp)
 }
+
+
+App();
 
 console.log(new Date().toLocaleString('lt-LT')+" - Debugging...");
 setInterval(function(){ console.log(new Date().toLocaleString('lt-LT')+" - Debugging...")},60000) //logs every minute
-
-//App();
 
 
 
