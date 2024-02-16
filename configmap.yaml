@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: report4c-config
+  name: dispatcher-config
 data:
   INSTANCE_NAME: disp1
   PVC: 
