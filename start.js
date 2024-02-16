@@ -512,7 +512,7 @@ function App() {
   });
   console.log(wardList);
 
-  //var appStart = procesMultipleCandidates(objFtpList.ftp)
+  var appStart = procesMultipleCandidates(objFtpList.ftp)
 }
 
 
