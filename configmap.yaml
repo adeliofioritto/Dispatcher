@@ -7,20 +7,5 @@ data:
   PVC: 
   DB_USER: userDB
   DB_CONNECTION_STRING: csDB
-  FTP_LIST: |
-    {
-      "ftp": [
-          {
-              "host": "first.host.lan",
-              "user": "FTP_username",
-              "password": "FTP_password",
-              "protocol": "ftps",
-              "port": 21,
-              "ward": "FOLDER1,FOLDER2",
-              "folder": "currentFolder",
-              "backup": "backupFolder",
-              "entryRoot": "/",
-              "retention": 3
-          }
-      ]
-  }
+  FTP_LIST: '{"ftp":[{"host":"first.host.lan","user":"FTP_username","password":"FTP_password","protocol":"ftps","port":21,"ward":"FOLDER1,FOLDER2","folder":"currentFolder","backup":"backupFolder","entryRoot":"/","retention":3}]}'
+    

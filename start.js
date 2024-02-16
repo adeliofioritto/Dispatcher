@@ -23,11 +23,24 @@ var ftpList = '';
 // <--- Variabili da istanziare tramite config/secret
 
 // --> Bind delle variabili interne rispetto al config properties
-let DB_PASSWORD = '';
-let DB_CONNECTION_STRING = '';
 
 let DB_USER = process.env.DB_USER;
 console.log("DB_USER:"+DB_USER);
+
+let DB_PASSWORD = process.env.DB_PASSWORD;
+console.log("DB_PASSWORD:"+DB_PASSWORD);
+
+let DB_CONNECTION_STRING = process.env.DB_CONNECTION_STRING;
+console.log("DB_CONNECTION_STRING:"+DB_CONNECTION_STRING);
+
+instanceName = process.env.INSTANCE_NAME;
+console.log("instanceName:"+instanceName);
+
+mountPath = process.env.PVC;
+console.log("mountPath:"+PVC);
+
+ftpList = process.env.FTP_LIST;
+console.log("ftpList:"+ftpList);
 
 // <--- Bind delle variabili interne rispetto al config properties
 
