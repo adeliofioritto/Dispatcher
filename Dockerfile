@@ -20,8 +20,5 @@ RUN npm install
 #Copy over app to app folder
 COPY . /app 
 
-#Expose server at port ( accessible outside of container)
-EXPOSE 8080 
-
 #Start app 
 CMD ["node", "start.js"]
