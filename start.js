@@ -37,7 +37,7 @@ instanceName = process.env.INSTANCE_NAME;
 console.log("instanceName:"+instanceName);
 
 mountPath = process.env.PVC;
-console.log("mountPath:"+PVC);
+console.log("mountPath:"+mountPath);
 
 ftpList = process.env.FTP_LIST;
 console.log("ftpList:"+ftpList);
