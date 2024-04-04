@@ -5,7 +5,13 @@
 
 Il dispatcher è un'applicazione che consente di leggere da un percorso di rete / cartella locale e "dispacciarli" (copiarli) all'interno di un Server FTP con scrittura di log applicativi, di trasferimento dei file e di raggiungibilità delle macchine.
 L'applicazione è stata pensata per offrire una soluzione di sincronizzazione centralizzata da una fonta verso n-destinazioni.
-Originariamente nata per OpenShift, è stata estesa anche per virtual machine standard.
+Originariamente nata per OpenShift, è stata estesa anche per Virtual Machine standard.
+<center>
+<picture>
+ <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/adeliofioritto/Dispatcher/main/IMG/Dispatcher_01.svg">
+ <img alt="YOUR-ALT-TEXT" src="YOUR-DEFAULT-IMAGE">
+</picture>
+</center>
 
 ### Ambienti di rilascio:
 - OpenShift
@@ -15,7 +21,7 @@ Originariamente nata per OpenShift, è stata estesa anche per virtual machine st
 - / : root 
 - /start.js : processo principale
 - /Dockerfile : file di inizializzazione ambiente per OpenShift
-- /package.json : contiene tutte le dipendenze librerie esterne
+- /package.json : contiene tutte le dipendenze per le librerie esterne
 - /README.md : questo file
     - /OKD : contiene i file di configurazione per l'ambiente OpenShift
         - configmap.yaml : definizione variabili di ambiente per OpenShift
@@ -96,35 +102,35 @@ Il JSON è una collezione di Server FTP che indicano
 
 ### Logiche di funzionamento
 Il Dispatcher si può avviare in singola esecuzione (apertura processo, chiusura, exit) oppure schedulato con una periodicità pari alla variabile espressa in millisecondi SCHEDULING.
-Una volta avviato, viene effettuato il controllo che tutte le variabili mandatorie siano censite, in caso contrario interrompe l'esecuzione con il messaggio:
+Una volta avviato, viene effettuato il controllo su tutte le variabili obbligatorie ed in caso contrario interrompe l'esecuzione con il messaggio:
 ```
 Attention! Please check your environment variables
 ```
 
 Viene quindi costruito il JSON con l'elenco dei Server FTP.
-Per ciascun Server FTP, effettua un controllo cancellando gli spazi - per eventuali errori di battitura - presenti nell'elenco definito in "ward" e costruiscce un array con la lista di tutti le cartelle definite. Tale array sarà utilizzato per effettuare il controllo incrociato "quali cartelle sono state inserite rispetto a quelle definite nel percorso di origine" evidenziandone eventualmente delle mancanze (per es. definisco in "ward" la cartella "Folder1", ma "Folder1" non è presente nell'elenco delle cartelle lette nel percorso della PVC).
-Viene effettuata la connessione su ciascun Server FTP e quindi nell'ordine:
-- Si recupera l'informazione sul Sistema Operativo utilizzato (DB LOG)
-- Se la variabile CLEAR_FTP_FOLDER è a true, svuoto la cartella di destinazione
-- Effettua il controllo che la cartella "ward" e "backup" siano presenti. In caso contrario, le crea
-- Copia ciascuna cartella definita nella "ward" e presente nella PVC all'interno della "backup"
-- Copia ciascuna cartella definita nella "ward" e presente nella PVC all'interno della "folder" con la logica di "sovrascrittura" sia della cartella, sia dei file
-- Si cancellano tutti i file più vecchi della "retention" presenti nella cartella "backup"
+Per ciascun Server FTP, effettua un controllo cancellando gli spazi - per eventuali errori di battitura - presenti all'interno della variabile "ward" e costruiscce un array con la lista di tutti le cartelle definite. Tale array sarà utilizzato per effettuare il controllo incrociato "quali cartelle sono state inserite rispetto a quelle definite nel percorso di origine" evidenziandone eventualmente delle mancanze (per es. definisco in "ward" la cartella "Folder1", ma "Folder1" non è presente nell'elenco delle cartelle lette nel percorso della PVC).
+Viene quindi effettuata la connessione per ciascun Server FTP e nell'ordine:
+- si recupera l'informazione sul Sistema Operativo utilizzato
+- se la variabile CLEAR_FTP_FOLDER è settata a true, svuota la cartella di destinazione
+- effettua il controllo sulla presenza o meno delle cartelle "ward" e "backup". In caso contrario, le crea
+- copia ciascuna cartella definita nella "ward" e presente nella PVC all'interno della "backup"
+- copia ciascuna cartella definita nella "ward" e presente nella PVC all'interno della "folder" con la logica di "sovrascrittura" totale (immagine speculare)
+- vengono cancellati tutti i file più vecchi della "retention" presenti nella cartella "backup"
 
 ### Gestione dei log
 I log vengono scritti a DB su due tabelle di appoggio. La mancata connessione verso il DB non blocca l'esecuzione del trasferimento dei file ai fini del backup.
-I loo possono essere di due tipi: applicativi e di trasferimento.
+I log possono essere di due tipi: applicativi e di trasferimento.
 I log applicativi sono presenti nella tabella "DISPATCHER_LOG_APP" e registrano il ciclo di vita del processo tramite il PROCESS_ID e quindi:
 - l'avvio
 - il recupero delle cartelle definite nel "ward"
 - la connessione al server FTP
 - il Sistema Operativo
-- le azioni di "removeDir"
+- le eventuali azioni di "removeDir"
 - l'esecuzione del ribaltamento della singola cartella con il totale dei secondi impiegati
 - gli errori di connessione (tipicamente per Timeout)
 - la chisura del processo
 
-I log di trasferimento sono presenti nella tabella "DISPATCHER_FILE_LOG" e registrano i trasferimenti dei singoli file, con indicazione del:
+I log di trasferimento file sono presenti nella tabella "DISPATCHER_FILE_LOG" e registrano i trasferimenti dei singoli file, con indicazione del:
 - nome file
 - cartella di origine
 - Server FTP di destinazione
@@ -163,4 +169,4 @@ Seguirà sezione per la guida sull'installazione per:
 
 MIT
 
-**Free Software, Hell Yeah!** 
+**Free Software, Hell Yeah!**
