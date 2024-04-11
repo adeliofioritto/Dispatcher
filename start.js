@@ -84,7 +84,7 @@ class reportFile {
 }
 
 class reportApp {
-  constructor(funzione, messaggio, instanceName, processID) {
+  constructor(funzione, messaggio, instanceName, workerID, processID) {
     this.timestamp = getTime();
     this.funzione = funzione;
     this.messaggio = messaggio;
