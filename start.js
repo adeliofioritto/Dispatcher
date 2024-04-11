@@ -105,7 +105,7 @@ async function scriviLogAppDB(msg) {
   console.log(msg);
 
   result = await connection.execute(
-    `INSERT INTO DISPATCHER_LOG_APP (time_stamp,function_name,message_body,instance_name,worker_id, process_id, remote_pft) VALUES (TO_DATE(:timestamp,'YYYY-MM-DD HH24:MI:SS'), :funzione, :messaggio, :instanceName, :workerID, :processID )`,
+    `INSERT INTO DISPATCHER_LOG_APP (time_stamp,function_name,message_body,instance_name,worker_id, process_id, remote_pft) VALUES (TO_DATE(:timestamp,'YYYY-MM-DD HH24:MI:SS'), :funzione, :messaggio, :instanceName, :workerID, :processID, :remoteFTP )`,
     [msg.timestamp, msg.funzione, msg.messaggio, msg.instanceName, msg.workerID, msg.processID, msg.remoteFTP], { autoCommit: true }
   );
   //console.log("Rows inserted: " + result.rowsAffected);  // 1
