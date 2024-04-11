@@ -84,13 +84,14 @@ class reportFile {
 }
 
 class reportApp {
-  constructor(funzione, messaggio, instanceName, workerID, processID) {
+  constructor(funzione, messaggio, instanceName, workerID, processID, remoteFTP) {
     this.timestamp = getTime();
     this.funzione = funzione;
     this.messaggio = messaggio;
     this.instanceName = instanceName;
     this.processID = processID;
     this.workerID = workerID;
+    this.remoteFTP = remoteFTP;
     console.log(JSON.stringify(this));
     if (connection) {
       //console.log("connessione attiva, scrivo a DB");
@@ -104,8 +105,8 @@ async function scriviLogAppDB(msg) {
   console.log(msg);
 
   result = await connection.execute(
-    `INSERT INTO DISPATCHER_LOG_APP (time_stamp,function_name,message_body,instance_name,worker_id, process_id) VALUES (TO_DATE(:timestamp,'YYYY-MM-DD HH24:MI:SS'), :funzione, :messaggio, :instanceName, :workerID, :processID )`,
-    [msg.timestamp, msg.funzione, msg.messaggio, msg.instanceName, msg.workerID, msg.processID], { autoCommit: true }
+    `INSERT INTO DISPATCHER_LOG_APP (time_stamp,function_name,message_body,instance_name,worker_id, process_id, remote_pft) VALUES (TO_DATE(:timestamp,'YYYY-MM-DD HH24:MI:SS'), :funzione, :messaggio, :instanceName, :workerID, :processID )`,
+    [msg.timestamp, msg.funzione, msg.messaggio, msg.instanceName, msg.workerID, msg.processID, msg.remoteFTP], { autoCommit: true }
   );
   //console.log("Rows inserted: " + result.rowsAffected);  // 1
 
@@ -187,8 +188,8 @@ function findMissingPresentDir(foldersOnMNT, arrayWardList, processID) {
   //console.log(`Configured wards, but not found on MNT: ${removedElements}`)
   //console.log(`Configured wards, founded on MNT: ${presentElements}`)
 
-  reportAppList.push((new reportApp('findMissingPresentDir - configured wards, but not found on MNT', removedElements.toString(), instanceName, '', processID)));
-  reportAppList.push((new reportApp('findMissingPresentDir - configured wards, founded on MNT', presentElements.toString(), instanceName, '', processID)));
+  reportAppList.push((new reportApp('findMissingPresentDir - configured wards, but not found on MNT', removedElements.toString(), instanceName, '', processID, '')));
+  reportAppList.push((new reportApp('findMissingPresentDir - configured wards, founded on MNT', presentElements.toString(), instanceName, '', processID, '')));
 
 }
 
@@ -239,11 +240,11 @@ async function establishFtpsConnection(server, processID) {
 
 
 
-    reportAppList.push((new reportApp('establishFtpsConnection - ' + server.host + ' - connected', workerID, instanceName, workerID, processID)));
+    reportAppList.push((new reportApp('establishFtpsConnection - ' + server.host + ' - connected', workerID, instanceName, workerID, processID, server.host)));
 
     //Recupero l'informazione sul sistema operativo
     const OS = await client.send("SYST");
-    reportAppList.push((new reportApp('establishFtpsConnection - ' + server.host + ' - OS', JSON.stringify(OS), instanceName, workerID, processID)));
+    reportAppList.push((new reportApp('establishFtpsConnection - ' + server.host + ' - OS', JSON.stringify(OS), instanceName, workerID, processID, server.host)));
 
     //console.log("PWD 1:" + await client.pwd());
 
@@ -252,7 +253,7 @@ async function establishFtpsConnection(server, processID) {
     for (const file of listFile) {
       if (file.type === 2) { //Se è una directory, popolo l'array
         if (svuotaFTP === 'true') {
-          reportAppList.push((new reportApp('establishFtpsConnection - ' + server.host + ' - removeDir ' + `${file.name}` + '', 'Remove all DIR from root path FTP for svuotaFTP', instanceName, workerID, processID)));
+          reportAppList.push((new reportApp('establishFtpsConnection - ' + server.host + ' - removeDir ' + `${file.name}` + '', 'Remove all DIR from root path FTP for svuotaFTP', instanceName, workerID, processID, server.host)));
           var deleteDir = await client.removeDir(`${server.entryRoot}/${file.name}`);
         }
       }
@@ -455,19 +456,19 @@ async function procesMultipleCandidates(data) {
       }
     }
   }
-  reportAppList.push((new reportApp('App', 'Start', instanceName, '', processID)));
-  reportAppList.push((new reportApp('App', 'Retrieved all wards in FTP conf', instanceName, '', processID)));
+  reportAppList.push((new reportApp('App', 'Start', instanceName, '', processID, '')));
+  reportAppList.push((new reportApp('App', 'Retrieved all wards in FTP conf', instanceName, '', processID, '')));
 
   var dirFTP = [];
 
   // 2. Creo l'array della lista dei reparti
   var arrayWardList = listToArray(wardList.replace(/\s/g, ''), ',');
-  reportAppList.push((new reportApp('arrayWardList', wardList.toString(), instanceName, '', processID)));
+  reportAppList.push((new reportApp('arrayWardList', wardList.toString(), instanceName, '', processID, '')));
 
 
   // 3. Creo l'elenco delle directory trovate sulla mount
   foldersOnMNT = getDirectory(mountPath);
-  reportAppList.push((new reportApp('getDirectory', foldersOnMNT.toString(), instanceName, '', processID)));
+  reportAppList.push((new reportApp('getDirectory', foldersOnMNT.toString(), instanceName, '', processID, '')));
 
   // 3. Per ciascuna directory, creo l'array bidimensionale per i file presenti in essa
   const mappaDirFile = createMap(mountPath, foldersOnMNT);
@@ -496,7 +497,7 @@ async function procesMultipleCandidates(data) {
 
   if (connection) {
     try {
-      reportAppList.push((new reportApp('App', 'End', instanceName, '', processID)));
+      reportAppList.push((new reportApp('App', 'End', instanceName, '', processID, '')));
       await connection.close();
       console.log("Chiusa Connessione DB");
     } catch (err) {
