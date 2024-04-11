@@ -103,7 +103,7 @@ async function scriviLogAppDB(msg) {
   console.log(msg);
 
   result = await connection.execute(
-    `INSERT INTO DISPATCHER_LOG_APP VALUES (TO_DATE(:timestamp,'YYYY-MM-DD HH24:MI:SS'), :funzione, :messaggio, :instanceName, :processID )`,
+    `INSERT INTO DISPATCHER_LOG_APP (time_stamp,function_name,message_body,instance_name,process_id) VALUES (TO_DATE(:timestamp,'YYYY-MM-DD HH24:MI:SS'), :funzione, :messaggio, :instanceName, :processID )`,
     [msg.timestamp, msg.funzione, msg.messaggio, msg.instanceName,msg.processID], { autoCommit: true }
   );
   //console.log("Rows inserted: " + result.rowsAffected);  // 1
@@ -115,7 +115,7 @@ async function scriviLogReportFile(msg) {
   console.log(msg);
 
   result = await connection.execute(
-    `INSERT INTO dispatcher_file_log VALUES (TO_DATE(:timestamp,'YYYY-MM-DD HH24:MI:SS'), :file_name, :file_path, :remote_ftp, TO_DATE(:start_time,'YYYY-MM-DD HH24:MI:SS'), TO_DATE(:end_time,'YYYY-MM-DD HH24:MI:SS'), :doc_size_bytes, :instance_name, :worker_id, :transfer_id, :processID)`,
+    `INSERT INTO dispatcher_file_log (time_stamp,file_name,file_path,remote_ftp,start_time,end_time,doc_size_bytes,instance_name,worker_id,transfer_id,process_id) VALUES (TO_DATE(:timestamp,'YYYY-MM-DD HH24:MI:SS'), :file_name, :file_path, :remote_ftp, TO_DATE(:start_time,'YYYY-MM-DD HH24:MI:SS'), TO_DATE(:end_time,'YYYY-MM-DD HH24:MI:SS'), :doc_size_bytes, :instance_name, :worker_id, :transfer_id, :processID)`,
     [msg.timestamp, msg.fileName, msg.directory, msg.remoteFTP, msg.start, msg.end, msg.bytes, msg.instanceName, msg.workerID, msg.transferID, msg.processID], { autoCommit: true }
   );
   //console.log("Rows inserted: " + result.rowsAffected);  // 1
