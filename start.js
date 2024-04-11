@@ -338,7 +338,7 @@ async function establishFtpsConnection(server, processID) {
       if (file.type === 2) { //Se è una directory, popolo l'array
         console.log(file);
         dirFTPcurrent.push(file.name);
-        reportAppList.push((new reportApp('establishFtpsConnection - ' + server.host + ' - removeDir ' + `${file.name}` + '', 'Remove DIR from root path', instanceName, workerID, processID)));
+        reportAppList.push((new reportApp('establishFtpsConnection - ' + server.host + ' - removeDir ' + `${file.name}` + '', 'Remove DIR from root path', instanceName, workerID, processID, server.host)));
         await client.removeDir(`${server.folder}/${file.name}`);
 
       }
@@ -361,7 +361,7 @@ async function establishFtpsConnection(server, processID) {
       console.log("END:" + endFolderUpload.toISOString());
       var totalElapsed = (endFolderUpload - startFolderUpload) / 1_000;
       console.log("ENDED IN SEC:" + totalElapsed);
-      reportAppList.push((new reportApp('establishFtpsConnection - ' + server.host + ' - uploadFromDir ' + `${folder}` + '', 'uploadFromDir in sec ' + totalElapsed, instanceName, workerID, processID)));
+      reportAppList.push((new reportApp('establishFtpsConnection - ' + server.host + ' - uploadFromDir ' + `${folder}` + '', 'uploadFromDir in sec ' + totalElapsed, instanceName, workerID, processID, server.host)));
     }
 
     console.log("reportFileList: ");
