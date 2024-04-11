@@ -432,7 +432,7 @@ async function establishFtpsConnection(server, processID) {
   } catch (err) {
     console.log("ERROR")
     console.log(err.toString());
-    reportAppList.push((new reportApp('establishFtpsConnection - ' + server.host + ' - ERROR', err.toString(), instanceName, workerID, processID)));
+    reportAppList.push((new reportApp('establishFtpsConnection - ' + server.host + ' - ERROR', err.toString(), instanceName, workerID, processID, server.host)));
   }
 
   client.close();
