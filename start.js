@@ -330,7 +330,7 @@ async function establishFtpsConnection(server, processID) {
       remoteFolder = server.backup;
       //console.log("START CP:" + new Date(new Date() - 3600 * 1000 * 3).toISOString());
       await client.uploadFromDir(`${mountPath}/${folder}`, `${server.backup}/${folder}`);
-      await client.remove(`${server.backup}/${folder}/TestSoloRemoto.pdf`);
+      //await client.remove(`${server.backup}/${folder}/TestSoloRemoto.pdf`);
       //console.log("END CP:" + new Date(new Date() - 3600 * 1000 * 3).toISOString());
       //break;
 
@@ -398,7 +398,7 @@ async function establishFtpsConnection(server, processID) {
       var startFolderUpload = new Date(new Date() - 3600 * 1000 * 3);
       console.log("START:" + startFolderUpload.toISOString());
       await client.uploadFromDir(`${mountPath}/${folder}`, `${server.folder}/${folder}`);
-      await client.remove(`${server.backup}/${folder}/TestSoloRemoto.pdf`);
+      //await client.remove(`${server.backup}/${folder}/TestSoloRemoto.pdf`);
       var endFolderUpload = new Date(new Date() - 3600 * 1000 * 3);
       console.log("END:" + endFolderUpload.toISOString());
       var totalElapsed = (endFolderUpload - startFolderUpload) / 1_000;
