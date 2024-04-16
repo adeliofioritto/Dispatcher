@@ -60,7 +60,7 @@ process.exit(1);
 
 // --> Definizioni di Classi e Funzioni
 class reportFile {
-  constructor(timestamp, fileName, directory, remoteFTP, start, end, bytes, instanceName, workerID, transferID, processID) {
+  constructor(timestamp, fileName, directory, remoteFTP, start, end, bytes, instanceName, workerID, transferID, processID, remoteFolder, transferStatus, transferReason) {
     this.timestamp = timestamp;
     this.fileName = fileName;
     this.directory = directory;
@@ -72,8 +72,11 @@ class reportFile {
     this.workerID = workerID;
     this.transferID = transferID;
     this.processID = processID;
-
+    this.remoteFolder = remoteFolder;
+    this.transferStatus = transferStatus;
+    this.transferReason = transferReason;
   }
+  
   sendToDB() {
     if (connection) {
       console.log(this);
@@ -117,8 +120,8 @@ async function scriviLogReportFile(msg) {
   console.log(msg);
 
   result = await connection.execute(
-    `INSERT INTO dispatcher_file_log (time_stamp,file_name,file_path,remote_ftp,start_time,end_time,doc_size_bytes,instance_name,worker_id,transfer_id,process_id) VALUES (TO_DATE(:timestamp,'YYYY-MM-DD HH24:MI:SS'), :file_name, :file_path, :remote_ftp, TO_DATE(:start_time,'YYYY-MM-DD HH24:MI:SS'), TO_DATE(:end_time,'YYYY-MM-DD HH24:MI:SS'), :doc_size_bytes, :instance_name, :worker_id, :transfer_id, :processID)`,
-    [msg.timestamp, msg.fileName, msg.directory, msg.remoteFTP, msg.start, msg.end, msg.bytes, msg.instanceName, msg.workerID, msg.transferID, msg.processID], { autoCommit: true }
+    `INSERT INTO dispatcher_file_log (time_stamp,file_name,file_path,remote_ftp,start_time,end_time,doc_size_bytes,instance_name,worker_id,transfer_id,process_id,remote_folder, transfer_status, transfer_info) VALUES (TO_DATE(:timestamp,'YYYY-MM-DD HH24:MI:SS'), :file_name, :file_path, :remote_ftp, TO_DATE(:start_time,'YYYY-MM-DD HH24:MI:SS'), TO_DATE(:end_time,'YYYY-MM-DD HH24:MI:SS'), :doc_size_bytes, :instance_name, :worker_id, :transfer_id, :processID, :remoteFolder, :transferStatus, :transferReason)`,
+    [msg.timestamp, msg.fileName, msg.directory, msg.remoteFTP, msg.start, msg.end, msg.bytes, msg.instanceName, msg.workerID, msg.transferID, msg.processID, msg.remoteFolder, msg.transferStatus, msg.transferReason], { autoCommit: true }
   );
   //console.log("Rows inserted: " + result.rowsAffected);  // 1
 }
@@ -219,6 +222,7 @@ async function establishFtpsConnection(server, processID) {
   workerID = uuid.v4();
   var reportFileList = [];
   var globalFolder = null;
+  var remoteFolder = null;
   var elementiDaRibaltare = [];
   var dirFTP = [];
   var dirFTPbackup = [];
@@ -291,13 +295,16 @@ async function establishFtpsConnection(server, processID) {
       timestamp = getTime();
       fileName = info.name;
       directory = globalFolder;
+      remoteDir= remoteFolder;
+
       remoteFTP = server.host;
       bytes = info.bytes;
       if (fileName != "") { //Solo per i file, il trasferimentento delle directory non intendo tracciarlo in questa classe
         if (info.bytes === 0) {
           start = timestamp;
           end = null;
-          reportFileList[fileName] = new reportFile(timestamp, fileName, directory, remoteFTP, start, end, bytes, instanceName, workerID, transferID, processID);
+          transferStatus = 1;
+          reportFileList[fileName] = new reportFile(timestamp, fileName, directory, remoteFTP, start, end, bytes, instanceName, workerID, transferID, processID, remoteDir, transferStatus, '');
         } else {
           start = null;
           end = timestamp;
@@ -315,13 +322,51 @@ async function establishFtpsConnection(server, processID) {
 
     //1.1 Logica di backup: effettuo la medesima copia sulla cartella di backup
     for (let folder of elementiDaRibaltare) {
+      filesRemoteFolder = [];
+      fileRemoteFTPFolder = [];
       // Faccio l'upload delle directory e file presenti con il controllo incrociato 
       //console.log(`${mountPath}\\${folder}`);
       globalFolder = folder;
+      remoteFolder = server.backup;
       //console.log("START CP:" + new Date(new Date() - 3600 * 1000 * 3).toISOString());
       await client.uploadFromDir(`${mountPath}/${folder}`, `${server.backup}/${folder}`);
+      await client.remove(`${server.backup}/${folder}/TestSoloRemoto.pdf`);
       //console.log("END CP:" + new Date(new Date() - 3600 * 1000 * 3).toISOString());
       //break;
+
+      //Verifico che tutti i file siano stati ribaltati, in caso contrario scrivo nei log l'errore
+      listFile = await client.list(`${server.backup}/${folder}`);
+      for (const file of listFile) {
+        if (file.type === 1) { 
+          fileRemoteFTPFolder.push(file.name);
+        }
+      }      
+      remoteFileList = fs.readdirSync(`${mountPath}/${folder}`);
+      for (const file of remoteFileList) {
+        var name = `${mountPath}/${folder}/${file}`
+        if (fs.statSync(name).isFile()) {
+          filesRemoteFolder.push(file)
+        }
+      }
+      for (const file of filesRemoteFolder){
+        if(!fileRemoteFTPFolder.includes(file))  
+          {
+            timestamp = getTime();  
+            directory = globalFolder;
+            remoteDir= remoteFolder;
+            remoteFTP = server.host;
+            transferID = uuid.v4();
+            transferStatus = -1 ;
+            transferReason = "Missing file"
+            reportFileList[fileName] = new reportFile(timestamp, file, directory, remoteFTP, null, null, null, instanceName, workerID, transferID, processID, remoteDir, transferStatus, transferReason);
+          }  
+      }
+      
+ 
+    }
+
+    for (const [key, value] of Object.entries(reportFileList)) {
+      console.log(reportFileList[key].sendToDB());
     }
 
     //2.0 Entro nella cartella remota di upload current e cancello tutto il contenuto
@@ -344,33 +389,56 @@ async function establishFtpsConnection(server, processID) {
       }
     }
 
-    console.log("dirFTPcurrent");
-    console.log(dirFTPcurrent);
-
-
     //2.1 Faccio l'uploade dei file
     for (let folder of elementiDaRibaltare) {
-      ///Faccio l'upload delle directory e file presenti con il controllo incrociato
-      //console.log(folder);
-      //console.log(`${mountPath}\\${folder}`);
+      filesRemoteFolder = [];
+      fileRemoteFTPFolder = [];
       globalFolder = folder;
+      remoteFolder = server.folder;
       var startFolderUpload = new Date(new Date() - 3600 * 1000 * 3);
       console.log("START:" + startFolderUpload.toISOString());
       await client.uploadFromDir(`${mountPath}/${folder}`, `${server.folder}/${folder}`);
+      await client.remove(`${server.backup}/${folder}/TestSoloRemoto.pdf`);
       var endFolderUpload = new Date(new Date() - 3600 * 1000 * 3);
       console.log("END:" + endFolderUpload.toISOString());
       var totalElapsed = (endFolderUpload - startFolderUpload) / 1_000;
       console.log("ENDED IN SEC:" + totalElapsed);
       reportAppList.push((new reportApp('establishFtpsConnection - ' + server.host + ' - uploadFromDir ' + `${folder}` + '', 'uploadFromDir in sec ' + totalElapsed, instanceName, workerID, processID, server.host)));
+
+      //Verifico che tutti i file siano stati ribaltati, in caso contrario scrivo nei log l'errore
+      listFile = await client.list(`${server.folder}/${folder}`);
+      for (const file of listFile) {
+        if (file.type === 1) { 
+          fileRemoteFTPFolder.push(file.name);
+        }
+      }      
+      remoteFileList = fs.readdirSync(`${mountPath}/${folder}`);
+      for (const file of remoteFileList) {
+        var name = `${mountPath}/${folder}/${file}`
+        if (fs.statSync(name).isFile()) {
+          filesRemoteFolder.push(file)
+        }
+      }
+      for (const file of filesRemoteFolder){
+        if(!fileRemoteFTPFolder.includes(file))  
+          {
+            timestamp = getTime();  
+            directory = globalFolder;
+            remoteDir= remoteFolder;
+            remoteFTP = server.host;
+            transferID = uuid.v4();
+            transferStatus = -1 ;
+            transferReason = "Missing file"
+            reportFileList[fileName] = new reportFile(timestamp, file, directory, remoteFTP, null, null, null, instanceName, workerID, transferID, processID, remoteDir, transferStatus, transferReason);
+          }  
+      }
+
+
     }
 
-    console.log("reportFileList: ");
     for (const [key, value] of Object.entries(reportFileList)) {
-      //console.log(`${key}: ${value}`);
       console.log(reportFileList[key].sendToDB());
     }
-    console.log("fine reportFileList");
-
 
     //Cancello i file più vecchi della retention, non c'è bisogno di controllare la current in quanto già cancellata ad ogni loop
     const listFileBackup = await client.list(server.backup);
@@ -426,6 +494,8 @@ async function establishFtpsConnection(server, processID) {
         }
       }
     }
+
+    
 
     console.log("dirFTPbackup"); console.log(dirFTPbackup);
 
