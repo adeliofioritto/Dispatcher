@@ -2,6 +2,14 @@ const ftp = require("basic-ftp")
 const fs = require('fs')
 const uuid = require('uuid');
 const oracledb = require('oracledb');
+var streamBuffers = require('stream-buffers');
+
+/* For Thick Mode */
+//WINDOWS
+//oracledb.initOracleClient({libDir: 'C:\\oracle\\instantclient_19_9'});
+//LINUX
+//oracledb.initOracleClient();
+/* -- For Thik Mode */
 const dotenv = require('dotenv');
 dotenv.config();
 
@@ -13,6 +21,9 @@ let connection;
 let foldersOnMNT;
 var removedElements = []; //Directory della wardList non presenti sulla mountPath
 var presentElements = []; //Directory della wardList presenti sulla mountPath
+var wardLocalList = "";
+var closeConnection = false;
+
 // <-- Variabili interne all'app
 
 // ---> Variabili da istanziare tramite config/secret
@@ -39,6 +50,9 @@ console.log("instanceName:"+instanceName);
 mountPath = process.env.PVC || "";
 console.log("mountPath:"+mountPath);
 
+folderDest = process.env.FOLDER_DEST || "";
+console.log("folderDest:"+folderDest);
+
 ftpList = process.env.FTP_LIST || "";
 console.log("ftpList:"+ftpList);
 
@@ -51,7 +65,20 @@ console.log("truncTable:"+truncTable);
 schedulingTime = process.env.SCHEDULING || 0;
 console.log("schedulingTime:"+schedulingTime);
 
-if (DB_USER === "" || DB_PASSWORD === "" || DB_CONNECTION_STRING === "" || instanceName === "" || mountPath === "" || ftpList === ""){
+purgeLogsOlderThan = process.env.PURGE_LOGS_OLDER_THAN || 0;
+console.log("purgeLogsOlderThan:"+purgeLogsOlderThan);
+
+purgeLogsJustForMe = process.env.PURGE_LOGS_JUST_FOR_ME || false;
+console.log("purgeLogsJustForMe:"+purgeLogsJustForMe);
+if (purgeLogsJustForMe === true || purgeLogsJustForMe === "true") {
+  purgeLogsJustForMe = instanceName;
+}else{
+  purgeLogsJustForMe = null;
+
+}
+console.log("purgeLogsJustForMe 2:"+purgeLogsJustForMe);
+
+ if (DB_USER === "" || DB_PASSWORD === "" || DB_CONNECTION_STRING === "" || instanceName === "" || mountPath === "" || ftpList === ""){
 console.log("Attention! Please check your environment variables");
 process.exit(1);
 }
@@ -79,7 +106,7 @@ class reportFile {
   
   sendToDB() {
     if (connection) {
-      console.log(this);
+      //console.log(this);
       //console.log("connessione attiva, scrivo a DB");
       var writeLog = scriviLogReportFile(this);
     }
@@ -124,6 +151,39 @@ async function scriviLogReportFile(msg) {
     [msg.timestamp, msg.fileName, msg.directory, msg.remoteFTP, msg.start, msg.end, msg.bytes, msg.instanceName, msg.workerID, msg.transferID, msg.processID, msg.remoteFolder, msg.transferStatus, msg.transferReason], { autoCommit: true }
   );
   //console.log("Rows inserted: " + result.rowsAffected);  // 1
+}
+
+
+
+class reportFTPConf {
+  constructor(instanceName, remoteFTP, FTPconf, source, missingWard, processID) {
+    this.timestamp = getTime();
+    this.instanceName = instanceName;
+    this.remoteFTP = remoteFTP;
+    this.FTPconf = FTPconf;
+    this.source = source;
+    this.missingWard = missingWard;
+    this.processID = processID;
+    console.log(JSON.stringify(this));
+    if (connection) {
+      //console.log("connessione attiva, scrivo a DB");
+      var writeLog = scriviReportFTPConfDB(this);
+    }
+  }
+}
+
+async function scriviReportFTPConfDB(msg) {
+  console.log("scriviReportFTPConfDB");
+  console.log(msg);
+
+  
+  //TIME_STAMP, INSTANCE_NAME, REMOTE_FTP, FTP_CONF, SOURCE, MISSING_WARD, PROCESS_ID
+  result = await connection.execute( 
+    `INSERT INTO DISPATCHER_SERVER_CFG (time_stamp, instance_name, remote_ftp, ftp_conf, source, missing_ward, process_id) VALUES (TO_DATE(:timestamp,'YYYY-MM-DD HH24:MI:SS'), :instanceName, :remoteFTP, :FTPconf, :source, :missingWard, :processID )`,
+    [msg.timestamp, msg.instanceName, msg.remoteFTP, msg.FTPconf, msg.source, msg.missingWard, msg.processID], { autoCommit: true }
+  );
+  //console.log("Rows inserted: " + result.rowsAffected);  // 1
+
 }
 
 function getTime() {
@@ -179,6 +239,8 @@ function createMap(mnt, dir, mappa = []) {
 
 function findMissingPresentDir(foldersOnMNT, arrayWardList, processID) {
   var inCurrent = {};
+  removedElements.length = 0;
+  presentElements.length = 0;
 
   for (let x of foldersOnMNT)
     inCurrent[x] = true;
@@ -188,18 +250,19 @@ function findMissingPresentDir(foldersOnMNT, arrayWardList, processID) {
     else
       presentElements.push(x)
   //break; // alternatively just break if exactly one missing element
-  //console.log(`Configured wards, but not found on MNT: ${removedElements}`)
-  //console.log(`Configured wards, founded on MNT: ${presentElements}`)
-
+  console.log(`Configured wards, but not found on MNT: ${removedElements}`)
+  console.log(`Configured wards, founded on MNT: ${presentElements}`)
   reportAppList.push((new reportApp('findMissingPresentDir - configured wards, but not found on MNT', removedElements.toString(), instanceName, '', processID, '')));
   reportAppList.push((new reportApp('findMissingPresentDir - configured wards, founded on MNT', presentElements.toString(), instanceName, '', processID, '')));
-
+  return removedElements.toString();
 }
 
 // 5 . Funzione che restituisce le directory presenti sull'FTP e nel MOUNT
 function findPresentDir(foldersOnMNT, arrayWardList) {
   var removedElementsCicle = [];
+  removedElementsCicle.length=0;
   var presentElementsCicle = [];
+  presentElementsCicle.length=0;
   var arrayWardList = listToArray(arrayWardList.replace(/\s/g, ''), ',');
   var inCurrent = {};
 
@@ -218,19 +281,29 @@ function findPresentDir(foldersOnMNT, arrayWardList) {
 
 
 // Funzione di Connessione all'FTP Client */
-async function establishFtpsConnection(server, processID) {
+async function establishFtpsConnection(server, processID, foldersOnMNT, wardList, processID) {
+  
+  var arrayWardList = listToArray(wardList.replace(/\s/g, ''), ',');
+  reportAppList.push((new reportApp('arrayWardList Server Side', wardList.toString(), instanceName, '', processID, '')));
+  var sourceFTPconf = "CLIENT_DISP";
+
   workerID = uuid.v4();
   var reportFileList = [];
   var globalFolder = null;
   var remoteFolder = null;
   var elementiDaRibaltare = [];
   var dirFTP = [];
+  dirFTP.length = 0;
   var dirFTPbackup = [];
+  dirFTPbackup.length = 0;
   var dirFTPcurrent = [];
+  dirFTPcurrent.length = 0;
+
   const client = new ftp.Client();
   client.ftp.verbose = false;
 
   try {
+
     await client.access({
       protocol: server.protocol,
       host: server.host,
@@ -238,11 +311,38 @@ async function establishFtpsConnection(server, processID) {
       password: server.password,
       port: server.port,
       secure: true,
-      secureOptions: { "rejectUnauthorized": false },
+      secureOptions: {"rejectUnauthorized":false},
       connectTimeout: 200000 //Per il connection timeout
     });
 
 
+    
+    var myWritableStreamBuffer = new streamBuffers.WritableStreamBuffer({
+      initialSize: (10 * 1024),   // start at 100 kilobytes.
+      incrementAmount: (10 * 1024) // grow by 10 kilobytes each time buffer overflows.
+    });
+
+    try {
+      
+      await client.downloadTo(myWritableStreamBuffer, "/"+server.entryRoot+"/ward.json")
+      wardLocalList = myWritableStreamBuffer.getContentsAsString('utf8');
+      wardLocalList = JSON.parse(wardLocalList).ward;
+      arrayWardList = listToArray(wardLocalList.replace(/\s/g, ''), ',');
+      reportAppList.push((new reportApp('arrayWardList Client Side', arrayWardList.toString(), instanceName, '', processID, '')));
+      //console.log("arrayWardList:" + arrayWardList);
+      var sourceFTPconf = "SERVER_FTP";
+
+    } catch (err) {
+      console.log("ERROR")
+      console.log(err.toString());
+      reportAppList.push((new reportApp('No local ward configured, will take server configuration - ' + server.host + ' - WARNING', err.toString(), instanceName, workerID, processID, server.host)));
+    }
+
+    delete myWritableStreamBuffer;
+    
+    var notFound = findMissingPresentDir(foldersOnMNT, arrayWardList, processID);
+
+    reportAppList.push((new reportFTPConf(instanceName, server.host, arrayWardList.toString(), sourceFTPconf, notFound, processID)));
 
     reportAppList.push((new reportApp('establishFtpsConnection - ' + server.host + ' - connected', workerID, instanceName, workerID, processID, server.host)));
 
@@ -252,7 +352,7 @@ async function establishFtpsConnection(server, processID) {
 
     //console.log("PWD 1:" + await client.pwd());
 
-    //Svuoto il server FTP se svuotaFTP = true
+    //Svuoto il server FTP se svuotaFTP = true --> DA VERIFICARE POST MODIFICA DESTINAZIONE MOUNT MULTIPLE 
     var listFile = await client.list(server.entryRoot);
     for (const file of listFile) {
       if (file.type === 2) { //Se è una directory, popolo l'array
@@ -265,6 +365,7 @@ async function establishFtpsConnection(server, processID) {
 
     var currentExist = false;
     var backupExist = false;
+
     var listFile = await client.list(server.entryRoot);
     for (const file of listFile) {
       if (file.type === 2) { //Se è una directory, popolo l'array
@@ -272,16 +373,59 @@ async function establishFtpsConnection(server, processID) {
         if (file.name === server.folder) { currentExist = true; }
         if (file.name === server.backup) { backupExist = true; }
       }
-    }
+    }    
 
     //Creo le cartelle di default. Nota: non posso generarla sempre in quanto su Linux genera un'eccezione in caso di esistenza
+    //console.log("PWD 0:" + await client.pwd());
     await client.cd(server.entryRoot);
     if (currentExist === false) {
-      await client.send("MKD " + server.folder); console.log("currentExist dentro:" + currentExist);
+      await client.send("MKD " + server.folder); //console.log("currentExist dentro:" + currentExist);
     }
     if (backupExist === false) {
-      await client.send("MKD " + server.backup); console.log("backupExist dentro:" + backupExist);
+      await client.send("MKD " + server.backup); //console.log("backupExist dentro:" + backupExist);
     }
+
+    var currentInsideFolderExist = false;
+    var currentInsideFolderbackupExist = false
+    
+    //Creo le cartelle di InsideFolder. Nota: non posso generarla sempre in quanto su Linux genera un'eccezione in caso di esistenza
+
+    //console.log("PWD 1:" + await client.pwd());
+    await client.cd(server.folder);
+    //console.log("PWD 2:" + await client.pwd());
+
+    var listFile = await client.list();
+    for (const file of listFile) {
+      if (file.type === 2) { //Se è una directory, popolo l'array
+        dirFTP.push(file.name);
+        if (file.name === folderDest) { currentInsideFolderExist = true; }
+      }
+    }
+
+    if (currentInsideFolderExist === false) {
+      await client.send("MKD " + folderDest); //console.log("currentInsideFolderExist dentro:" + currentInsideFolderExist);
+    }
+
+
+    //console.log("PWD 1:" + await client.pwd());
+    await client.cd("..");
+    await client.cd(server.backup);
+    //console.log("PWD 2:" + await client.pwd());
+    var listFile = await client.list();
+
+    for (const file of listFile) {
+      if (file.type === 2) { //Se è una directory, popolo l'array
+        dirFTP.push(file.name);
+        if (file.name === folderDest) { currentInsideFolderbackupExist = true; }
+      }
+    }
+
+    if (currentInsideFolderbackupExist === false) {
+      await client.send("MKD " + folderDest); //console.log("currentInsideFolderbackupExist dentro:" + currentInsideFolderbackupExist);
+    }
+
+    //Ci si riposiziona nella root originaria pre modifica
+    await client.cd("..");    
 
     console.log("Directory FTP trovate sul server: " + server.user);
     console.log(dirFTP);
@@ -318,7 +462,10 @@ async function establishFtpsConnection(server, processID) {
     console.log("elementiDaRibaltare");
     //console.log(server.ward);
     console.log(elementiDaRibaltare);
+    console.log("reportFileList");
     console.log(reportFileList);
+
+
 
     //1.1 Logica di backup: effettuo la medesima copia sulla cartella di backup
     for (let folder of elementiDaRibaltare) {
@@ -329,13 +476,13 @@ async function establishFtpsConnection(server, processID) {
       globalFolder = folder;
       remoteFolder = server.backup;
       //console.log("START CP:" + new Date(new Date() - 3600 * 1000 * 3).toISOString());
-      await client.uploadFromDir(`${mountPath}/${folder}`, `${server.backup}/${folder}`);
+      await client.uploadFromDir(`${mountPath}/${folder}`, `${server.backup}/${folderDest}/${folder}`);
       //await client.remove(`${server.backup}/${folder}/TestSoloRemoto.pdf`);
       //console.log("END CP:" + new Date(new Date() - 3600 * 1000 * 3).toISOString());
       //break;
 
       //Verifico che tutti i file siano stati ribaltati, in caso contrario scrivo nei log l'errore
-      listFile = await client.list(`${server.backup}/${folder}`);
+      listFile = await client.list(`${server.backup}/${folderDest}/${folder}`);
       for (const file of listFile) {
         if (file.type === 1) { 
           fileRemoteFTPFolder.push(file.name);
@@ -365,15 +512,22 @@ async function establishFtpsConnection(server, processID) {
  
     }
 
+    
+
+
     for (const [key, value] of Object.entries(reportFileList)) {
-      console.log(reportFileList[key].sendToDB());
+      //console.log("reportFileList[key].sendToDB()");
+      //console.log(reportFileList[key].sendToDB());
+      reportFileList[key].sendToDB()
     }
 
     //2.0 Entro nella cartella remota di upload current e cancello tutto il contenuto
-    listFile = await client.list(server.folder);
+    await client.cd(server.folder);
+    listFile = await client.list(folderDest);
+    await client.cd("..");
     for (const file of listFile) {
-      console.log(file.type);
-      console.log(file);
+      //console.log(file.type);
+      //console.log(file);
       if (file.type === 1) {
         // pulisco i file nelle directory root 
         //console.log(file);
@@ -381,32 +535,31 @@ async function establishFtpsConnection(server, processID) {
         //await client.remove(`${dirFTPupload}/${file.name}`);
       }
       if (file.type === 2) { //Se è una directory, popolo l'array
-        console.log(file);
+        //console.log(file);
         dirFTPcurrent.push(file.name);
         reportAppList.push((new reportApp('establishFtpsConnection - ' + server.host + ' - removeDir ' + `${file.name}` + '', 'Remove DIR from root path', instanceName, workerID, processID, server.host)));
-        await client.removeDir(`${server.folder}/${file.name}`);
-
+        await client.removeDir(`${server.folder}/${folderDest}/${file.name}`);
       }
-    }
+    }    
 
-    //2.1 Faccio l'uploade dei file
+    //2.1 Faccio l'upload dei file
     for (let folder of elementiDaRibaltare) {
       filesRemoteFolder = [];
       fileRemoteFTPFolder = [];
       globalFolder = folder;
       remoteFolder = server.folder;
       var startFolderUpload = new Date(new Date() - 3600 * 1000 * 3);
-      console.log("START:" + startFolderUpload.toISOString());
-      await client.uploadFromDir(`${mountPath}/${folder}`, `${server.folder}/${folder}`);
+      //console.log("START:" + startFolderUpload.toISOString());
+      await client.uploadFromDir(`${mountPath}/${folder}`, `${server.folder}/${folderDest}/${folder}`);
       //await client.remove(`${server.backup}/${folder}/TestSoloRemoto.pdf`);
       var endFolderUpload = new Date(new Date() - 3600 * 1000 * 3);
-      console.log("END:" + endFolderUpload.toISOString());
+      //console.log("END:" + endFolderUpload.toISOString());
       var totalElapsed = (endFolderUpload - startFolderUpload) / 1_000;
-      console.log("ENDED IN SEC:" + totalElapsed);
+      //console.log("ENDED IN SEC:" + totalElapsed);
       reportAppList.push((new reportApp('establishFtpsConnection - ' + server.host + ' - uploadFromDir ' + `${folder}` + '', 'uploadFromDir in sec ' + totalElapsed, instanceName, workerID, processID, server.host)));
 
       //Verifico che tutti i file siano stati ribaltati, in caso contrario scrivo nei log l'errore
-      listFile = await client.list(`${server.folder}/${folder}`);
+      listFile = await client.list(`${server.folder}/${folderDest}/${folder}`);
       for (const file of listFile) {
         if (file.type === 1) { 
           fileRemoteFTPFolder.push(file.name);
@@ -436,33 +589,38 @@ async function establishFtpsConnection(server, processID) {
 
     }
 
+    
+
     for (const [key, value] of Object.entries(reportFileList)) {
-      console.log(reportFileList[key].sendToDB());
+      //console.log("reportFileList[key].sendToDB() 2");
+      //console.log(reportFileList[key].sendToDB());
+      reportFileList[key].sendToDB()
     }
 
     //Cancello i file più vecchi della retention, non c'è bisogno di controllare la current in quanto già cancellata ad ogni loop
-    const listFileBackup = await client.list(server.backup);
+    await client.cd(server.backup);
+    const listFileBackup = await client.list(folderDest);
+    await client.cd("..");
+    
     //Costruisco l'elenco delle directory della backup
     for (const file of listFileBackup) {
       //console.log(file.type);
       if (file.type === 1) {
         // pulisco i file nelle directory root 
-        console.log(file);
+        //console.log(file);
         //console.log(file.name);
         //await client.remove(`${dirFTPupload}/${file.name}`);
       }
       if (file.type === 2) { //Se è una directory, popolo l'array
-        console.log(file);
+        //console.log(file);
         dirFTPbackup.push(file.name);
       }
     }
 
-
-
-    //Verifico i file se sono più vecchi della retention, in caso cancellerei
+    //Verifico i file se sono più vecchi della retention li cancello
     for (const dir of dirFTPbackup) {
-      console.log("dir:" + dir);
-      var dirBackup = await client.list(`${server.backup}/${dir}`);
+      //console.log("dir:" + dir);
+      var dirBackup = await client.list(`${server.backup}/${folderDest}/${dir}`);
       for (const file of dirBackup) {
         //console.log(file.type);
         if (file.type === 1) {
@@ -470,34 +628,34 @@ async function establishFtpsConnection(server, processID) {
           //console.log(file);
           //console.log(file.name);
           //await client.remove(`${dirFTPupload}/${file.name}`);
-          var fileTime = await client.send("MDTM " + `${server.backup}/${dir}/` + file.name);
-          console.log(fileTime);
+          var fileTime = await client.send("MDTM " + `${server.backup}/${folderDest}/${dir}/` + file.name);
+          //console.log(fileTime);
           normalizzaData = fileTime.message.replace(fileTime.code + " ", "");
-          console.log(normalizzaData);
+          //console.log(normalizzaData);
           var anno = normalizzaData.substring(0, 4);
           var mese = normalizzaData.substring(4, 6)
           var giorno = normalizzaData.substring(6, 8)
           var ora = normalizzaData.substring(8, 10)
           var minuti = normalizzaData.substring(10, 12)
           var secondi = normalizzaData.substring(12, 14)
-          console.log(anno + "/" + mese + "/" + giorno + " " + ora + ":" + minuti + ":" + secondi);
+          //console.log(anno + "/" + mese + "/" + giorno + " " + ora + ":" + minuti + ":" + secondi);
           var dataOraFile = new Date(anno + "/" + mese + "/" + giorno + " " + ora + ":" + minuti + ":" + secondi);
           var oraAttuale = new Date();
-          console.log(dataOraFile);
-          console.log(oraAttuale);
+          //console.log(dataOraFile);
+          //console.log(oraAttuale);
           let Difference_In_Time = oraAttuale.getTime() - dataOraFile.getTime();
           let Difference_In_Days = Math.round(Difference_In_Time / (1000 * 3600 * 24));
-          console.log("Difference_In_Days:" + Difference_In_Days);
+          //console.log("Difference_In_Days:" + Difference_In_Days);
           if (Difference_In_Days >= server.retention) {
-            await client.remove(`${server.backup}/${dir}/` + file.name);
+            await client.remove(`${server.backup}/${folderDest}/${dir}/` + file.name);
           }
         }
       }
     }
 
-    
 
-    console.log("dirFTPbackup"); console.log(dirFTPbackup);
+    console.log("dirFTPbackup");
+    console.log(dirFTPbackup);
 
   } catch (err) {
     console.log("ERROR")
@@ -505,57 +663,61 @@ async function establishFtpsConnection(server, processID) {
     reportAppList.push((new reportApp('establishFtpsConnection - ' + server.host + ' - ERROR', err.toString(), instanceName, workerID, processID, server.host)));
   }
 
+  
   client.close();
 }
 
 
-async function procesMultipleCandidates(data) {
+async function procesMultipleCandidates(data,closeConnection) {
+  //console.log("--- closeConnection "+closeConnection);
   processID = uuid.v4();
-  try {
-    connection = await oracledb.getConnection({ user: DB_USER, password: DB_PASSWORD, connectionString: DB_CONNECTION_STRING });
-  } catch (err) {
-    console.error(err);
-  } finally {
-    if (connection) {
-      console.log("Aperta Connessione DB");
-      if (truncTable === 'true') {
-        result = await connection.execute(`TRUNCATE TABLE DISPATCHER_LOG_APP`);
-        console.log(" Trunc DISPATCHER_LOG_APP");
-        result = await connection.execute(`TRUNCATE TABLE DISPATCHER_FILE_LOG`);
-        console.log(" Trunc DISPATCHER_FILE_LOG");
+  if (!connection) {
+    try {
+      connection = await oracledb.getConnection({ user: DB_USER, password: DB_PASSWORD, connectionString: DB_CONNECTION_STRING });
+    } catch (err) {
+      console.error(err);
+    } finally {
+      if (connection) {
+        console.log("Aperta Connessione DB");
+        if (truncTable === 'true') {
+          result = await connection.execute(`TRUNCATE TABLE DISPATCHER_LOG_APP`);
+          console.log(" Trunc DISPATCHER_LOG_APP");
+          result = await connection.execute(`TRUNCATE TABLE DISPATCHER_FILE_LOG`);
+          console.log(" Trunc DISPATCHER_FILE_LOG");
+        }
       }
     }
   }
+ 
   reportAppList.push((new reportApp('App', 'Start', instanceName, '', processID, '')));
   reportAppList.push((new reportApp('App', 'Retrieved all wards in FTP conf', instanceName, '', processID, '')));
 
   var dirFTP = [];
 
   // 2. Creo l'array della lista dei reparti
-  var arrayWardList = listToArray(wardList.replace(/\s/g, ''), ',');
-  reportAppList.push((new reportApp('arrayWardList', wardList.toString(), instanceName, '', processID, '')));
+  //var arrayWardList = listToArray(wardList.replace(/\s/g, ''), ',');
+  //reportAppList.push((new reportApp('arrayWardList Server Side', wardList.toString(), instanceName, '', processID, '')));
 
 
   // 3. Creo l'elenco delle directory trovate sulla mount
   foldersOnMNT = getDirectory(mountPath);
-  reportAppList.push((new reportApp('getDirectory', foldersOnMNT.toString(), instanceName, '', processID, '')));
+  reportAppList.push((new reportApp('getDirectory '+mountPath, foldersOnMNT.toString(), instanceName, '', processID, '')));  
 
   // 3. Per ciascuna directory, creo l'array bidimensionale per i file presenti in essa
   const mappaDirFile = createMap(mountPath, foldersOnMNT);
-  //console.log("Elenco dei file presenti nelle directory");
-  //console.log(mappaDirFile);
+  console.log("Elenco dei file presenti nelle directory");
+  console.log(mappaDirFile);
 
 
   // 4. Faccio un raffronto tra le directory presenti sulla MNT rispetto a quelle configurate nel Dispatcher
-  findMissingPresentDir(foldersOnMNT, arrayWardList, processID);
+  // Move findMissingPresentDir under establishFtpsConnection for local ward list
+  //findMissingPresentDir(foldersOnMNT, arrayWardList, processID);
 
   let generatedResponse = []
   for (let elem of data) {
     try {
       //console.log(elem);
-
-      // here candidate data is inserted into  
-      let insertResponse = await establishFtpsConnection(elem, processID)
+      let insertResponse = await establishFtpsConnection(elem, processID, foldersOnMNT, wardList, processID)
       // and response need to be added into final response array 
       generatedResponse.push(insertResponse)
     } catch (error) {
@@ -566,10 +728,19 @@ async function procesMultipleCandidates(data) {
 
 
   if (connection) {
+
+    if (purgeLogsOlderThan > 0){
+      console.log("purgeLogsOlderThan: "+purgeLogsOlderThan+"; "+purgeLogsJustForMe);
+
+  result = await connection.execute(`BEGIN FTP_DISPATCHER_SERVICE.Purge_Logs_Older_Than(:purgeLogsOlderThan,:purgeLogsJustForMe); END;`,[purgeLogsOlderThan,purgeLogsJustForMe]);
+    }
+
     try {
       reportAppList.push((new reportApp('App', 'End', instanceName, '', processID, '')));
-      await connection.close();
-      console.log("Chiusa Connessione DB");
+      if (closeConnection === true) {
+        await connection.close();
+        console.log("Chiusa Connessione DB");
+      }
     } catch (err) {
       console.log("DB Connection Error:");
       console.error(err);
@@ -582,7 +753,7 @@ async function procesMultipleCandidates(data) {
 
 
 
-function App() {
+async function App() {
   //inizializzo le variabili per ogni ciclo
   removedElements = []; //Directory della wardList non presenti sulla mountPath
   presentElements = []; //Directory della wardList presenti sulla mountPath
@@ -590,16 +761,56 @@ function App() {
   // 1. Cotruisco la sommatoria dei reparti configurati in base al JSON degli FTP
   const objFtpList = JSON.parse(ftpList);
   var contListaFtp = 0;
-  objFtpList.ftp.forEach(server => {
+  temp = await objFtpList.ftp.forEach(server => {
     server.ward = server.ward.replace(/\s/g, '');
-    console.log(server);
-    if (contListaFtp > 0) { wardList += ","; }
-    wardList += server.ward;
-    contListaFtp++;
-  });
-  console.log(wardList);
+    listaRepartiServerWard = listToArray(server.ward, ',');
+    
+    for (let reparto of listaRepartiServerWard){
+      //console.log("reparto");
+      //console.log(reparto);
+      //console.log("wardList");
+      //console.log(wardList);
 
-  var appStart = procesMultipleCandidates(objFtpList.ftp)
+      if(wardList.indexOf(reparto) == -1){      
+        if (contListaFtp > 0) { 
+          wardList += ","; 
+        }
+          wardList += reparto;
+      }
+      contListaFtp++;
+    }
+    
+
+
+  });
+  //console.log(wardList);
+    //process.exit(0);
+
+  mountPathArr = listToArray(mountPath.replace(/\s/g, ''), ',');
+  //console.log("---->"+mountPathArr);
+
+  folderDestArr = listToArray(folderDest.replace(/\s/g, ''), ',');
+  //console.log("---->"+folderDestArr);
+
+  for (let [index, mountPathLocal] of mountPathArr.entries()) {
+    //console.log(index, mountPathLocal);
+    //console.log(mountPathArr[index]);
+    //console.log(folderDestArr[index]);
+    mountPath = mountPathArr[index];
+    folderDest = folderDestArr[index];
+    console.log("mountPath");
+    console.log(mountPath);
+    console.log("folderDest");
+    console.log(folderDest);
+    if ( index == mountPathArr.length-1 ) {
+      closeConnection = true;
+    }
+    
+    var appStart =  await procesMultipleCandidates(objFtpList.ftp,closeConnection);
+
+  }
+
+
 }
 
 App();
