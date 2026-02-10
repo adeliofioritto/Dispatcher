@@ -1,17 +1,16 @@
 {
   "dependencies": {
-    "basic-ftp": "^5.0.4",
+    "basic-ftp": "^5.0.5",
+    "dotenv": "^16.4.5",
+    "fs": "^0.0.1-security",
     "oracledb": "^6.3.0",
+    "stream-buffers": "^3.0.3",
     "uuid": "^9.0.1"
   },
   "name": "bc",
   "description": "[![N|Solid](https://cldup.com/dTxpPi9lDf.thumb.png)](https://nodesource.com/products/nsolid)",
   "version": "1.0.0",
   "main": "start.js",
-  "devDependencies": {},
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
   "scripts": {
     "start": "node start.js"
   },
